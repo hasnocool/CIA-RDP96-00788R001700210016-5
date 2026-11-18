@@ -32,7 +32,9 @@ pub struct GatewayApp {
     visualizer_enabled: bool,
     visualizer_mode: Arc<AtomicU8>,
     visualizer_close_signal: Arc<AtomicBool>,
-    harmonic_3d: Option<GpuHarmonicRenderer>,
+    harmonic_3d_enabled: bool,
+    harmonic_3d_close_signal: Arc<AtomicBool>,
+    harmonic_3d: Option<Arc<GpuHarmonicRenderer>>,
     sweep_config: SweepConfig,
     sweep_worker: Option<SweepWorker>,
     sweep_points: Vec<SweepPoint>,
@@ -60,7 +62,9 @@ impl GatewayApp {
                     visualization::VisualizationMode::default() as u8,
                 )),
                 visualizer_close_signal: Arc::new(AtomicBool::new(false)),
-                harmonic_3d,
+                harmonic_3d_enabled: false,
+                harmonic_3d_close_signal: Arc::new(AtomicBool::new(false)),
+                harmonic_3d: harmonic_3d.map(Arc::new),
                 sweep_config,
                 sweep_worker: None,
                 sweep_points: Vec::new(),
@@ -83,7 +87,9 @@ impl GatewayApp {
                     visualization::VisualizationMode::default() as u8,
                 )),
                 visualizer_close_signal: Arc::new(AtomicBool::new(false)),
-                harmonic_3d,
+                harmonic_3d_enabled: false,
+                harmonic_3d_close_signal: Arc::new(AtomicBool::new(false)),
+                harmonic_3d: harmonic_3d.map(Arc::new),
                 sweep_config,
                 sweep_worker: None,
                 sweep_points: Vec::new(),
@@ -392,22 +398,26 @@ impl eframe::App for GatewayApp {
             ui.add_space(8.0);
             ui.group(|ui| {
                 ui.heading("3D harmonic geometry · WGPU");
-                if let Some(renderer) = &mut self.harmonic_3d {
-                    let elapsed = self.audio.as_ref()
-                        .map(AudioEngine::elapsed_seconds)
-                        .unwrap_or(0.0);
-                    renderer.show(
-                        ui,
-                        self.settings.carrier_hz,
-                        self.settings.beat_hz,
-                        self.settings.noise_level,
-                        elapsed,
+                let previous = self.harmonic_3d_enabled;
+                let response = ui.add_enabled(
+                    self.harmonic_3d.is_some(),
+                    egui::Checkbox::new(
+                        &mut self.harmonic_3d_enabled,
+                        "Open 3D harmonic surface in a separate window",
+                    ),
+                );
+                if response.changed() && self.harmonic_3d_enabled {
+                    self.harmonic_3d_close_signal.store(false, Ordering::Release);
+                } else if previous && !self.harmonic_3d_enabled {
+                    ui.ctx().send_viewport_cmd_to(
+                        egui::ViewportId::from_hash_of("gateway_harmonic_3d"),
+                        egui::ViewportCommand::Close,
                     );
+                }
+                if self.harmonic_3d.is_some() {
+                    ui.label("Drag to rotate X/Y. Shift+drag to rotate Z. Scroll to zoom. Auto-rotate for continuous Y rotation.");
                 } else {
-                    ui.colored_label(
-                        egui::Color32::YELLOW,
-                        "The WGPU render state is unavailable; the existing 2D visualizer remains available.",
-                    );
+                    ui.label("The WGPU render state is unavailable; the existing 2D visualizer remains available.");
                 }
             });
 
@@ -701,6 +711,47 @@ impl eframe::App for GatewayApp {
                         &mut mode,
                     );
                     visualizer_mode.store(mode as u8, Ordering::Release);
+                },
+            );
+        }
+
+        if self.harmonic_3d_enabled
+            && let Some(renderer) = &self.harmonic_3d
+            && let Some(audio) = &self.audio
+        {
+            let elapsed_seconds = audio.elapsed_seconds();
+            let carrier_hz = self.settings.carrier_hz;
+            let beat_hz = self.settings.beat_hz;
+            let noise_level = self.settings.noise_level;
+            let close_signal = Arc::clone(&self.harmonic_3d_close_signal);
+            let renderer = Arc::clone(renderer);
+            let viewport_id =
+                egui::ViewportId::from_hash_of("gateway_harmonic_3d");
+            let viewport_builder = egui::ViewportBuilder::default()
+                .with_title("Gateway 3D Harmonic Surface")
+                .with_inner_size([1120.0, 850.0])
+                .with_min_inner_size([780.0, 650.0]);
+
+            ui.ctx().show_viewport_deferred(
+                viewport_id,
+                viewport_builder,
+                move |viewport_ui, _viewport_class| {
+                    if viewport_ui.input(|input| input.viewport().close_requested()) {
+                        close_signal.store(true, Ordering::Release);
+                        return;
+                    }
+
+                    viewport_ui
+                        .ctx()
+                        .request_repaint_after(Duration::from_millis(16));
+
+                    renderer.show(
+                        viewport_ui,
+                        carrier_hz,
+                        beat_hz,
+                        noise_level,
+                        elapsed_seconds,
+                    );
                 },
             );
         }
