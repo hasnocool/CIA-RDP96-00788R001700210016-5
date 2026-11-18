@@ -3,7 +3,7 @@
 // GPU resources are created once during app startup; each frame only updates
 // a tiny uniform buffer. No CPU mesh generation or audio-thread work is used.
 
-use std::num::NonZeroU64;
+use std::{num::NonZeroU64, time::{Duration, Instant}};
 
 use eframe::{
     CreationContext,
@@ -82,6 +82,7 @@ impl egui_wgpu::CallbackTrait for HarmonicCallback {
 
 pub struct GpuHarmonicRenderer {
     user_rotation: f32,
+    animation_origin: Instant,
 }
 
 impl GpuHarmonicRenderer {
@@ -179,7 +180,7 @@ impl GpuHarmonicRenderer {
                 uniform_buffer,
             });
 
-        Some(Self { user_rotation: 0.0 })
+        Some(Self { user_rotation: 0.0, animation_origin: Instant::now() })
     }
 
     pub fn show(
@@ -190,6 +191,7 @@ impl GpuHarmonicRenderer {
         noise_level: f32,
         elapsed_seconds: f64,
     ) {
+        ui.ctx().request_repaint_after(Duration::from_millis(16));
         ui.horizontal_wrapped(|ui| {
             ui.strong("GPU-generated standing-wave surface");
             ui.separator();
@@ -211,7 +213,10 @@ impl GpuHarmonicRenderer {
 
         let uniforms = HarmonicUniforms {
             params: [
-                self.user_rotation + elapsed_seconds as f32 * 0.17,
+                self.user_rotation
+                    + (self.animation_origin.elapsed().as_secs_f32()
+                        + elapsed_seconds as f32)
+                        * 0.17,
                 beat_hz.clamp(0.5, 30.0),
                 (1.0 + beat_hz / carrier_hz.max(1.0)).clamp(1.0, 1.5),
                 noise_level.clamp(0.0, 0.10),
