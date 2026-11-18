@@ -5,7 +5,6 @@
 
 use std::num::NonZeroU64;
 
-use bytemuck::{Pod, Zeroable};
 use eframe::{
     CreationContext,
     egui::{self, Color32, Sense, Vec2},
@@ -16,9 +15,20 @@ const GRID_SIZE: u32 = 40;
 const VERTEX_COUNT: u32 = 4 * GRID_SIZE * (GRID_SIZE - 1);
 
 #[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
+#[repr(C)]
+#[derive(Clone, Copy)]
 struct HarmonicUniforms {
     params: [f32; 4],
+}
+
+impl HarmonicUniforms {
+    fn to_bytes(self) -> [u8; 16] {
+        let mut bytes = [0_u8; 16];
+        for (index, value) in self.params.iter().enumerate() {
+            bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_ne_bytes());
+        }
+        bytes
+    }
 }
 
 struct HarmonicRenderResources {
@@ -29,7 +39,7 @@ struct HarmonicRenderResources {
 
 impl HarmonicRenderResources {
     fn prepare(&self, queue: &wgpu::Queue, uniforms: HarmonicUniforms) {
-        queue.write_buffer(&self.uniform_buffer, 0, bytemuck::bytes_of(&uniforms));
+        queue.write_buffer(&self.uniform_buffer, 0, &uniforms.to_bytes());
     }
 
     fn paint(&self, render_pass: &mut wgpu::RenderPass<'_>) {
@@ -146,7 +156,7 @@ impl GpuHarmonicRenderer {
         });
         render_state
             .queue
-            .write_buffer(&uniform_buffer, 0, bytemuck::bytes_of(&initial_uniforms));
+            .write_buffer(&uniform_buffer, 0, &initial_uniforms.to_bytes());
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("gateway-harmonic-bind-group"),
