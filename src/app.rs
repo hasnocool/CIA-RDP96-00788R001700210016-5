@@ -138,8 +138,9 @@ impl GatewayApp {
             return;
         }
 
-        self.sweep_config.carrier_hz = self.settings.carrier_hz;
-        self.sweep_config.noise_level = self.settings.noise_level;
+        // Sweep parameters are intentionally independent of the live audio
+        // controls so a reproducible experiment is not silently changed while
+        // the audio session is being adjusted.
         self.sweep_config = self.sweep_config.validated();
         self.sweep_total = self.sweep_config.sample_count();
         self.sweep_completed = 0;
