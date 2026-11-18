@@ -4,6 +4,8 @@ mod app;
 mod audio;
 mod dsp;
 mod export;
+mod experiments;
+mod harmonic_3d;
 mod visualization;
 
 fn main() -> eframe::Result {
