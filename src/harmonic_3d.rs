@@ -25,7 +25,7 @@ impl HarmonicUniforms {
     fn to_bytes(self) -> [u8; 16] {
         let mut bytes = [0_u8; 16];
         for (index, value) in self.params.iter().enumerate() {
-            bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_ne_bytes());
+            bytes[index * 4..index * 4 + 4].copy_from_slice(&value.to_le_bytes());
         }
         bytes
     }
