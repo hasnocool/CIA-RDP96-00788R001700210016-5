@@ -189,7 +189,7 @@ pub fn start_sweep(config: SweepConfig) -> SweepWorker {
     thread::spawn(move || {
         let count = values.len();
         let worker_count = thread::available_parallelism()
-            .map(usize::from)
+            .map(|parallelism| parallelism.get())
             .unwrap_or(1)
             .clamp(1, 8)
             .min(count.max(1));
@@ -673,6 +673,36 @@ mod tests {
         assert!(opposite_sign(-1.0, 1.0));
         assert!(!opposite_sign(1.0, 2.0));
         assert!(!opposite_sign(-1.0, -2.0));
+    }
+
+    #[test]
+    fn parallel_sweep_returns_every_requested_frequency() {
+        use super::{SweepEvent, start_sweep};
+        use std::sync::mpsc::TryRecvError;
+
+        let worker = start_sweep(SweepConfig {
+            start_beat_hz: 0.5,
+            end_beat_hz: 1.5,
+            step_hz: 0.5,
+            ..SweepConfig::default()
+        });
+        let mut beats = Vec::new();
+        let mut finished = false;
+
+        while !finished {
+            match worker.try_recv() {
+                Ok(SweepEvent::Point(point)) => beats.push(point.beat_hz),
+                Ok(SweepEvent::Finished { cancelled, .. }) => {
+                    assert!(!cancelled);
+                    finished = true;
+                }
+                Err(TryRecvError::Empty) => std::thread::yield_now(),
+                Err(TryRecvError::Disconnected) => panic!("worker ended without a completion event"),
+            }
+        }
+
+        beats.sort_by(f32::total_cmp);
+        assert_eq!(beats, vec![0.5, 1.0, 1.5]);
     }
 
     #[test]
