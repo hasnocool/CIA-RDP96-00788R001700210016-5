@@ -53,15 +53,24 @@ impl SharedControl {
 
     fn store_settings(&self, settings: AudioSettings) {
         let settings = settings.validated();
-        self.carrier_hz.store(settings.carrier_hz.to_bits(), Ordering::Relaxed);
-        self.beat_hz.store(settings.beat_hz.to_bits(), Ordering::Relaxed);
-        self.tuning_hz.store(settings.tuning_hz.to_bits(), Ordering::Relaxed);
-        self.tuning_seconds.store(u64::from(settings.tuning_seconds), Ordering::Relaxed);
-        self.binaural_minutes.store(u64::from(settings.binaural_minutes), Ordering::Relaxed);
-        self.tone_level.store(settings.tone_level.to_bits(), Ordering::Relaxed);
-        self.noise_kind.store(settings.noise_kind as u8, Ordering::Relaxed);
-        self.noise_level.store(settings.noise_level.to_bits(), Ordering::Relaxed);
-        self.fade_seconds.store(u64::from(settings.fade_seconds), Ordering::Relaxed);
+        self.carrier_hz
+            .store(settings.carrier_hz.to_bits(), Ordering::Relaxed);
+        self.beat_hz
+            .store(settings.beat_hz.to_bits(), Ordering::Relaxed);
+        self.tuning_hz
+            .store(settings.tuning_hz.to_bits(), Ordering::Relaxed);
+        self.tuning_seconds
+            .store(u64::from(settings.tuning_seconds), Ordering::Relaxed);
+        self.binaural_minutes
+            .store(u64::from(settings.binaural_minutes), Ordering::Relaxed);
+        self.tone_level
+            .store(settings.tone_level.to_bits(), Ordering::Relaxed);
+        self.noise_kind
+            .store(settings.noise_kind as u8, Ordering::Relaxed);
+        self.noise_level
+            .store(settings.noise_level.to_bits(), Ordering::Relaxed);
+        self.fade_seconds
+            .store(u64::from(settings.fade_seconds), Ordering::Relaxed);
     }
 
     fn load_settings(&self) -> AudioSettings {
@@ -114,18 +123,77 @@ impl AudioEngine {
         let control = Arc::new(SharedControl::new(settings));
         let visualization = Arc::new(AudioTap::new());
         let stream = match sample_format {
-            SampleFormat::F32 => build_stream::<f32>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::F64 => build_stream::<f64>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::I8 => build_stream::<i8>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::I16 => build_stream::<i16>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::I24 => build_stream::<cpal::I24>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::I32 => build_stream::<i32>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::I64 => build_stream::<i64>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::U8 => build_stream::<u8>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::U16 => build_stream::<u16>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::U32 => build_stream::<u32>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            SampleFormat::U64 => build_stream::<u64>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
-            other => return Err(format!("The output device uses unsupported sample format: {other:?}")),
+            SampleFormat::F32 => build_stream::<f32>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::F64 => build_stream::<f64>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::I8 => build_stream::<i8>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::I16 => build_stream::<i16>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::I24 => build_stream::<cpal::I24>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::I32 => build_stream::<i32>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::I64 => build_stream::<i64>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::U8 => build_stream::<u8>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::U16 => build_stream::<u16>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::U32 => build_stream::<u32>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            SampleFormat::U64 => build_stream::<u64>(
+                &device,
+                stream_config,
+                Arc::clone(&control),
+                Arc::clone(&visualization),
+            ),
+            other => {
+                return Err(format!(
+                    "The output device uses unsupported sample format: {other:?}"
+                ));
+            }
         }
         .map_err(|error| format!("Could not create the audio stream: {error}"))?;
 
@@ -149,7 +217,9 @@ impl AudioEngine {
 
     pub fn start_or_resume(&self, settings: AudioSettings) {
         self.set_settings(settings);
-        let total_frames = settings.total_seconds().saturating_mul(u64::from(self.sample_rate));
+        let total_frames = settings
+            .total_seconds()
+            .saturating_mul(u64::from(self.sample_rate));
         let current_frames = self.control.published_frames.load(Ordering::Acquire);
         if current_frames >= total_frames {
             self.control.playing.store(false, Ordering::Release);
@@ -174,8 +244,7 @@ impl AudioEngine {
     }
 
     pub fn elapsed_seconds(&self) -> f64 {
-        self.control.published_frames.load(Ordering::Acquire) as f64
-            / f64::from(self.sample_rate)
+        self.control.published_frames.load(Ordering::Acquire) as f64 / f64::from(self.sample_rate)
     }
 
     pub fn sample_rate(&self) -> u32 {
@@ -229,7 +298,9 @@ where
             }
 
             let settings = control.load_settings();
-            let total_frames = settings.total_seconds().saturating_mul(u64::from(sample_rate));
+            let total_frames = settings
+                .total_seconds()
+                .saturating_mul(u64::from(sample_rate));
             let silence = T::from_sample(0.0_f32);
 
             for frame in output.chunks_mut(channels) {
@@ -260,7 +331,9 @@ where
             // Publish progress once per callback. The generation guard prevents an
             // older callback from overwriting a newly-reset session counter.
             if control.generation.load(Ordering::Acquire) == generation {
-                control.published_frames.store(frame_index, Ordering::Release);
+                control
+                    .published_frames
+                    .store(frame_index, Ordering::Release);
             }
             visualization.publish(visualization_cursor);
         },

@@ -17,8 +17,6 @@ fn main() -> eframe::Result {
     eframe::run_native(
         "Gateway Audio Lab",
         options,
-        Box::new(|creation_context| {
-            Ok(Box::new(app::GatewayApp::new(creation_context)))
-        }),
+        Box::new(|creation_context| Ok(Box::new(app::GatewayApp::new(creation_context)))),
     )
 }

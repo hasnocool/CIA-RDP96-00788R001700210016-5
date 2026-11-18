@@ -6,11 +6,7 @@ use std::path::Path;
 
 use crate::dsp::{AudioSettings, StereoSynth};
 
-pub fn write_wav(
-    path: &Path,
-    sample_rate: u32,
-    settings: AudioSettings,
-) -> Result<(), String> {
+pub fn write_wav(path: &Path, sample_rate: u32, settings: AudioSettings) -> Result<(), String> {
     let settings = settings.validated();
     let sample_rate = sample_rate.max(8_000);
     let total_frames = settings
