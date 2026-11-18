@@ -16,7 +16,10 @@ use eframe::egui;
 use crate::{
     audio::AudioEngine,
     dsp::{AudioSettings, NoiseKind},
-    export, visualization,
+    experiments::{self, BoundaryCondition, SweepConfig, SweepEvent, SweepPoint, SweepWorker},
+    export,
+    harmonic_3d::GpuHarmonicRenderer,
+    visualization,
 };
 
 pub struct GatewayApp {
@@ -29,11 +32,26 @@ pub struct GatewayApp {
     visualizer_enabled: bool,
     visualizer_mode: Arc<AtomicU8>,
     visualizer_close_signal: Arc<AtomicBool>,
+    harmonic_3d: Option<GpuHarmonicRenderer>,
+    sweep_config: SweepConfig,
+    sweep_worker: Option<SweepWorker>,
+    sweep_points: Vec<SweepPoint>,
+    sweep_total: usize,
+    sweep_completed: usize,
+    sweep_status: String,
+    sweep_export_receiver: Option<Receiver<Result<PathBuf, String>>>,
+    sweep_exporting: bool,
 }
 
 impl GatewayApp {
-    pub fn new(_creation_context: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(creation_context: &eframe::CreationContext<'_>) -> Self {
         let settings = AudioSettings::default();
+        let harmonic_3d = GpuHarmonicRenderer::new(creation_context);
+        let sweep_config = SweepConfig {
+            carrier_hz: settings.carrier_hz,
+            noise_level: settings.noise_level,
+            ..SweepConfig::default()
+        };
         match AudioEngine::new(settings) {
             Ok(audio) => Self {
                 settings,
@@ -42,6 +60,15 @@ impl GatewayApp {
                     visualization::VisualizationMode::default() as u8,
                 )),
                 visualizer_close_signal: Arc::new(AtomicBool::new(false)),
+                harmonic_3d,
+                sweep_config,
+                sweep_worker: None,
+                sweep_points: Vec::new(),
+                sweep_total: 0,
+                sweep_completed: 0,
+                sweep_status: "Ready. Configure a sweep from 0.5 to 30 Hz.".to_owned(),
+                sweep_export_receiver: None,
+                sweep_exporting: false,
                 audio: Some(audio),
                 audio_error: None,
                 export_receiver: None,
@@ -56,6 +83,15 @@ impl GatewayApp {
                     visualization::VisualizationMode::default() as u8,
                 )),
                 visualizer_close_signal: Arc::new(AtomicBool::new(false)),
+                harmonic_3d,
+                sweep_config,
+                sweep_worker: None,
+                sweep_points: Vec::new(),
+                sweep_total: 0,
+                sweep_completed: 0,
+                sweep_status: "Ready. Configure a sweep from 0.5 to 30 Hz.".to_owned(),
+                sweep_export_receiver: None,
+                sweep_exporting: false,
                 audio: None,
                 audio_error: Some(error.clone()),
                 export_receiver: None,
@@ -97,6 +133,54 @@ impl GatewayApp {
         });
     }
 
+    fn begin_sweep(&mut self) {
+        if self.sweep_worker.is_some() {
+            return;
+        }
+
+        self.sweep_config.carrier_hz = self.settings.carrier_hz;
+        self.sweep_config.noise_level = self.settings.noise_level;
+        self.sweep_config = self.sweep_config.validated();
+        self.sweep_total = self.sweep_config.sample_count();
+        self.sweep_completed = 0;
+        self.sweep_points.clear();
+        self.sweep_status = format!(
+            "Running {} frequency points on a background worker pool…",
+            self.sweep_total
+        );
+        self.sweep_worker = Some(experiments::start_sweep(self.sweep_config));
+    }
+
+    fn cancel_sweep(&mut self) {
+        if let Some(worker) = &self.sweep_worker {
+            worker.cancel();
+            self.sweep_status = "Cancellation requested; active points will finish safely.".to_owned();
+        }
+    }
+
+    fn export_sweep(&mut self) {
+        if self.sweep_exporting || self.sweep_points.is_empty() {
+            return;
+        }
+
+        let config = self.sweep_config;
+        let points = self.sweep_points.clone();
+        let (sender, receiver) = mpsc::channel();
+        self.sweep_export_receiver = Some(receiver);
+        self.sweep_exporting = true;
+        self.sweep_status = "Choose a filename. CSV, JSON, SVG, and HTML animation will be written in the background.".to_owned();
+
+        thread::spawn(move || {
+            let result = rfd::FileDialog::new()
+                .add_filter("CSV data", &["csv"])
+                .set_file_name("gateway-frequency-sweep.csv")
+                .save_file()
+                .ok_or_else(|| "Sweep export cancelled.".to_owned())
+                .and_then(|path| experiments::export_bundle(&path, config, &points));
+            let _ = sender.send(result);
+        });
+    }
+
     fn format_time(seconds: f64) -> String {
         let total = seconds.max(0.0) as u64;
         format!(
@@ -130,13 +214,84 @@ impl eframe::App for GatewayApp {
             };
         }
 
+        let mut sweep_finished = false;
+        loop {
+            let event = match self.sweep_worker.as_ref() {
+                Some(worker) => worker.try_recv(),
+                None => break,
+            };
+            match event {
+                Ok(SweepEvent::Point(point)) => {
+                    self.sweep_completed += 1;
+                    self.sweep_points.push(point);
+                }
+                Ok(SweepEvent::Finished {
+                    worker_count,
+                    cancelled,
+                }) => {
+                    self.sweep_status = if cancelled {
+                        format!(
+                            "Sweep cancelled after {} of {} points using {} workers.",
+                            self.sweep_completed, self.sweep_total, worker_count
+                        )
+                    } else {
+                        format!(
+                            "Sweep complete: {} points calculated by {} parallel workers.",
+                            self.sweep_completed, worker_count
+                        )
+                    };
+                    sweep_finished = true;
+                    break;
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    self.sweep_status =
+                        "Sweep worker exited without sending a completion event.".to_owned();
+                    sweep_finished = true;
+                    break;
+                }
+            }
+        }
+        if sweep_finished {
+            self.sweep_worker = None;
+            self.sweep_points
+                .sort_by(|left, right| left.beat_hz.total_cmp(&right.beat_hz));
+        }
+
+        let sweep_export_completed = self
+            .sweep_export_receiver
+            .as_ref()
+            .and_then(|receiver| match receiver.try_recv() {
+                Ok(result) => Some(result),
+                Err(mpsc::TryRecvError::Empty) => None,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    Some(Err("The sweep export worker stopped unexpectedly.".to_owned()))
+                }
+            });
+        if let Some(result) = sweep_export_completed {
+            self.sweep_exporting = false;
+            self.sweep_export_receiver = None;
+            self.sweep_status = match result {
+                Ok(path) => format!(
+                    "Research bundle exported: {} (+ JSON, SVG, and HTML animation).",
+                    path.display()
+                ),
+                Err(error) => error,
+            };
+        }
+
         if self.visualizer_close_signal.swap(false, Ordering::AcqRel) {
             self.visualizer_enabled = false;
             context.request_repaint();
         }
 
         let live_playing = self.audio.as_ref().is_some_and(AudioEngine::is_playing);
-        if live_playing || self.exporting || self.visualizer_enabled {
+        if live_playing
+            || self.exporting
+            || self.visualizer_enabled
+            || self.sweep_worker.is_some()
+            || self.sweep_exporting
+        {
             context.request_repaint_after(Duration::from_millis(150));
         }
     }
@@ -227,6 +382,154 @@ impl eframe::App for GatewayApp {
                 } else {
                     ui.label("Live visualization requires a working output audio device.");
                 }
+            });
+
+            ui.add_space(8.0);
+            ui.group(|ui| {
+                ui.heading("3D harmonic geometry · WGPU");
+                if let Some(renderer) = &mut self.harmonic_3d {
+                    let elapsed = self.audio.as_ref()
+                        .map(AudioEngine::elapsed_seconds)
+                        .unwrap_or(0.0);
+                    renderer.show(
+                        ui,
+                        self.settings.carrier_hz,
+                        self.settings.beat_hz,
+                        self.settings.noise_level,
+                        elapsed,
+                    );
+                } else {
+                    ui.colored_label(
+                        egui::Color32::YELLOW,
+                        "The WGPU render state is unavailable; the existing 2D visualizer remains available.",
+                    );
+                }
+            });
+
+            ui.add_space(8.0);
+            ui.group(|ui| {
+                ui.heading("Parallel frequency experiments");
+                ui.label(
+                    "Sweep the binaural difference and record how this deterministic Chladni-style surrogate responds. Each frequency point is calculated independently on a bounded background worker pool.",
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut self.sweep_config.start_beat_hz, 0.5..=30.0)
+                            .text("Start Δf (Hz)"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut self.sweep_config.end_beat_hz, 0.5..=30.0)
+                            .text("End Δf (Hz)"),
+                    );
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut self.sweep_config.step_hz, 0.1..=5.0)
+                            .text("Step (Hz)"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut self.sweep_config.carrier_hz, 80.0..=1_000.0)
+                            .text("Carrier (Hz)"),
+                    );
+                });
+                ui.horizontal_wrapped(|ui| {
+                    ui.add(
+                        egui::Slider::new(&mut self.sweep_config.mode_x, 1..=12)
+                            .text("Plate mode X"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut self.sweep_config.mode_y, 1..=12)
+                            .text("Plate mode Y"),
+                    );
+                    ui.add(
+                        egui::Slider::new(&mut self.sweep_config.noise_level, 0.0..=0.10)
+                            .text("Model noise"),
+                    );
+                });
+                egui::ComboBox::from_label("Boundary condition")
+                    .selected_text(self.sweep_config.boundary.label())
+                    .show_ui(ui, |ui| {
+                        for boundary in BoundaryCondition::ALL {
+                            ui.selectable_value(
+                                &mut self.sweep_config.boundary,
+                                boundary,
+                                boundary.label(),
+                            );
+                        }
+                    });
+
+                ui.horizontal_wrapped(|ui| {
+                    if self.sweep_worker.is_some() {
+                        if ui.button("Cancel sweep").clicked() {
+                            self.cancel_sweep();
+                        }
+                    } else if ui.button("Run parallel sweep").clicked() {
+                        self.begin_sweep();
+                    }
+
+                    if ui
+                        .add_enabled(
+                            !self.sweep_points.is_empty() && !self.sweep_exporting,
+                            egui::Button::new("Export research bundle"),
+                        )
+                        .clicked()
+                    {
+                        self.export_sweep();
+                    }
+                    if self.sweep_exporting {
+                        ui.spinner();
+                    }
+                });
+
+                let progress = if self.sweep_total == 0 {
+                    0.0
+                } else {
+                    (self.sweep_completed as f32 / self.sweep_total as f32).clamp(0.0, 1.0)
+                };
+                ui.add(
+                    egui::ProgressBar::new(progress)
+                        .desired_height(12.0)
+                        .show_percentage(),
+                );
+                ui.label(&self.sweep_status);
+                ui.small(format!(
+                    "{} of {} points · {} stored samples · grid {}×{}",
+                    self.sweep_completed,
+                    self.sweep_total,
+                    self.sweep_points.len(),
+                    48,
+                    48
+                ));
+
+                if let Some(point) = self.sweep_points.last() {
+                    ui.separator();
+                    ui.horizontal_top(|ui| {
+                        ui.vertical(|ui| {
+                            ui.strong(format!("Δf = {:.2} Hz", point.beat_hz));
+                            ui.label(format!(
+                                "Nodal crossings: {} · density {:.4}",
+                                point.nodal_crossings, point.nodal_density
+                            ));
+                            ui.label(format!("RMS model amplitude: {:.5}", point.rms_amplitude));
+                            ui.label(format!(
+                                "Carrier / difference: {:.5}",
+                                point.carrier_to_beat_ratio
+                            ));
+                            ui.label(format!("Base-12 ratio: {}", point.ratio_base12));
+                            ui.label(format!("Base-60 ratio: {}", point.ratio_base60));
+                            ui.small("Base conversions are alternate representations of the same ratio, not separate physical predictions.");
+                        });
+                        ui.add_space(12.0);
+                        experiments::draw_pattern(
+                            ui,
+                            point,
+                            egui::Vec2::new(250.0, 250.0),
+                        );
+                    });
+                }
+                ui.small(
+                    "Boundary labels marked “approximation” use simplified basis functions. The beat-coupled overlay is a declared mathematical experiment; a binaural beat is an auditory percept and does not itself create a plate's physical nodal pattern.",
+                );
             });
 
             ui.add_space(8.0);
