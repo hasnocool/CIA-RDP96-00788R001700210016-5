@@ -95,8 +95,9 @@ impl AudioEngine {
             .default_output_device()
             .ok_or_else(|| "No default audio output device was found.".to_owned())?;
         let device_name = device
-            .name()
-            .unwrap_or_else(|_| "Default output device".to_owned());
+            .description()
+            .map(|d| d.name().to_string())
+            .unwrap_or_else(|_| "Default output device".to_string());
         let supported_config = device
             .default_output_config()
             .map_err(|error| format!("Could not read output configuration: {error}"))?;
@@ -134,7 +135,7 @@ impl AudioEngine {
             _stream: stream,
             sample_rate,
             channels,
-            device_name,
+            device_name: device_name.to_string(),
         })
     }
 
@@ -190,7 +191,7 @@ fn build_stream<T>(
     device: &Device,
     config: StreamConfig,
     control: Arc<SharedControl>,
-) -> Result<Stream, cpal::BuildStreamError>
+) -> Result<Stream, cpal::Error>
 where
     T: SizedSample + FromSample<f32>,
 {
@@ -201,7 +202,7 @@ where
     let mut frame_index = 0_u64;
 
     device.build_output_stream(
-        &config,
+        config,
         move |output: &mut [T], _callback_info| {
             let generation = control.generation.load(Ordering::Acquire);
             if generation != callback_generation {
