@@ -93,7 +93,7 @@ impl GpuHarmonicRenderer {
         });
 
         let initial_uniforms = HarmonicUniforms {
-            params: [0.0, 0.0, 0.0, 0.0, 10.0, 1.05, 0.0, 0.0, 0.0, 2.7, 1.55, 1.0],
+            params: [0.0, 0.0, 0.0, 0.0, 10.0, 1.05, 0.0, 0.0, 0.0, 4.0, 1.55, 2.0],
         };
         let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("gateway-harmonic-uniform-buffer"),
@@ -128,7 +128,7 @@ impl GpuHarmonicRenderer {
 
         let state = Arc::new(Mutex::new(HarmonicState {
             rotation: [0.0, 0.0, 0.0],
-            camera_distance: 2.7,
+            camera_distance: 4.0,
             camera_target: [0.0, 0.0, 0.0],
             auto_rotate: false,
             animation_origin: Instant::now(),
@@ -153,7 +153,7 @@ impl GpuHarmonicRenderer {
             ui.label(format!("Carrier {:.2} Hz · Δ {:.2} Hz", carrier_hz, beat_hz));
             if ui.button("Reset view").clicked() {
                 state.rotation = [0.0, 0.0, 0.0];
-                state.camera_distance = 2.7;
+                state.camera_distance = 4.0;
                 state.camera_target = [0.0, 0.0, 0.0];
             }
             ui.checkbox(&mut state.auto_rotate, "Auto-rotate");
@@ -177,7 +177,7 @@ impl GpuHarmonicRenderer {
         if response.hovered() {
             let scroll = ui.input(|i| i.smooth_scroll_delta.y);
             if scroll != 0.0 {
-                state.camera_distance = (state.camera_distance - scroll * 0.005).clamp(0.8, 10.0);
+                state.camera_distance = (state.camera_distance - scroll * 0.02).clamp(0.8, 15.0);
             }
         }
 
@@ -203,7 +203,7 @@ impl GpuHarmonicRenderer {
                 state.camera_target[0],
                 state.camera_target[1],
                 state.camera_distance,
-                1.0,
+                2.0,
             ],
         };
 
