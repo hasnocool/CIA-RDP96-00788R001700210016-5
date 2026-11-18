@@ -92,7 +92,7 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     y_rot = x_rot * sz + y_rot * cz;
     x_rot = x_rot2;
 
-    // Camera transform
+    // Camera transform - translate camera along -Z (view direction)
     let cam_distance = uniforms.camera.x;
     let cam_target_x = uniforms.camera.y;
     let cam_target_y = uniforms.camera.z;
@@ -101,7 +101,10 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     x_rot -= cam_target_x;
     y_rot -= cam_target_y;
 
-    let perspective = perspective_scale / (cam_distance + z_rot);
+    // Move camera back along -Z axis (camera at +Z looking at origin)
+    let z_camera = z_rot - cam_distance;
+
+    let perspective = perspective_scale / max(z_camera, 0.1);
 
     var output: VertexOutput;
     output.clip_position = vec4<f32>(
