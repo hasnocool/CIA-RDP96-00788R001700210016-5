@@ -176,6 +176,14 @@ impl SweepWorker {
     }
 }
 
+impl Drop for SweepWorker {
+    fn drop(&mut self) {
+        // Closing the UI or dropping the job handle requests cooperative
+        // cancellation so detached worker threads do not outlive the task.
+        self.cancel.store(true, Ordering::Release);
+    }
+}
+
 /// Start a sweep on a detached coordinator thread. The coordinator fans points
 /// out across at most eight workers, leaving CPU headroom for the UI and audio.
 /// The UI consumes events with try_recv(), so it never waits for this work.
