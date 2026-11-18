@@ -216,13 +216,17 @@ impl eframe::App for GatewayApp {
         }
 
         let mut sweep_finished = false;
-        loop {
+        // Bound per-frame queue draining so a fast producer cannot monopolize
+        // the UI event loop while a large sweep is being collected.
+        let mut events_processed = 0_usize;
+        while events_processed < 32 {
             let event = match self.sweep_worker.as_ref() {
                 Some(worker) => worker.try_recv(),
                 None => break,
             };
             match event {
                 Ok(SweepEvent::Point(point)) => {
+                    events_processed += 1;
                     self.sweep_completed += 1;
                     self.sweep_points.push(point);
                 }
