@@ -28,7 +28,7 @@ Primary source: [CIA-RDP96-00788R001700210016-5.pdf](https://www.cia.gov/reading
 - Pause, resume, stop/reset, session progress, and stage display.
 - Background WAV export as stereo 16-bit PCM. Rendering and the save dialog run outside the GUI/audio callback.
 - Optional **Harmonic Visualization** native window, opened/closed with a checkbox in the main application.
-- Live stereo Lissajous/phase figure, left/right waveforms, and a measured two-channel FFT spectrum (0–1 kHz, dBFS).
+- Seven selectable visualization modes: live dashboard, stereo phase, waveforms, FFT spectrum, cymatic mandala, phase interference field, and harmonic geometry rings.
 - The visualizer samples the signal actually sent to CPAL through a fixed-size atomic ring buffer; the audio callback does not lock, allocate, or wait for the visualizer.
 - Closing the visualization window with its title-bar close button synchronizes the checkbox in the main window.
 - Unit tests for the signal relationship, tuning stage, timing, output bounds, sample-tap snapshots, and FFT carrier-frequency detection.
@@ -78,11 +78,17 @@ The native save dialog uses the XDG Desktop Portal when available (and can fall 
 
 Enable **Open harmonic visualization in a separate window** in the main window. The visualization window can be moved, resized, or closed independently; closing it also turns the main-window toggle off.
 
-The window contains three views:
+The window now includes a **Visualization** selector with seven modes:
 
-- **Stereo phase / Lissajous:** plots left-channel samples on X against right-channel samples on Y. Different carrier frequencies create a slowly changing phase pattern; identical tuning tones appear as a diagonal trace.
-- **Left and right waveforms:** plots recent samples from each output channel.
-- **Frequency spectrum:** performs a Hann-windowed 16,384-point FFT on each channel and displays measured amplitude in dBFS from 0 to 1 kHz. Dashed markers show the current target carrier frequencies.
+- **Live dashboard:** stereo phase plot, left/right waveforms, and measured FFT spectrum together.
+- **Stereo phase / Lissajous:** plots captured left-channel samples against right-channel samples.
+- **Stereo waveforms:** independently inspect recent left and right output samples.
+- **Frequency spectrum:** Hann-windowed 16,384-point FFT for each channel, displayed in dBFS from 0 to 1 kHz.
+- **Cymatic mandala:** animated radial geometry whose lobe count and modulation respond to the binaural difference, carrier, noise mix, and elapsed phase.
+- **Phase interference field:** a two-source wave-interference model; the spatial pattern changes with the two channel frequencies, their difference, noise mix, and time.
+- **Harmonic geometry rings:** a 16-order radial geometric model driven by the carrier ratio and phase.
+
+The selected mode is remembered while the visualizer window remains open. Switch modes at any time without stopping audio. The measured views use the actual samples sent to the output device. The three geometry modes are mathematical visualization models, not measured acoustic cymatics, physical resonance experiments, or claims that a sine wave contains extra harmonics.
 
 The spectrum needs 16,384 output frames before it can be populated (about 0.34 seconds at 48 kHz). The phase and waveform views appear as soon as samples are available.
 

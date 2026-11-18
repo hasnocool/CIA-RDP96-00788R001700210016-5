@@ -113,77 +113,210 @@ impl Default for AudioTap {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum VisualizationMode {
+    #[default]
+    LiveDashboard,
+    Lissajous,
+    Waveforms,
+    Spectrum,
+    CymaticMandala,
+    InterferenceField,
+    HarmonicRings,
+}
+
+impl VisualizationMode {
+    pub const ALL: [Self; 7] = [
+        Self::LiveDashboard, Self::Lissajous, Self::Waveforms, Self::Spectrum,
+        Self::CymaticMandala, Self::InterferenceField, Self::HarmonicRings,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::LiveDashboard => "Live dashboard",
+            Self::Lissajous => "Stereo phase / Lissajous",
+            Self::Waveforms => "Stereo waveforms",
+            Self::Spectrum => "Frequency spectrum",
+            Self::CymaticMandala => "Cymatic mandala",
+            Self::InterferenceField => "Phase interference field",
+            Self::HarmonicRings => "Harmonic geometry rings",
+        }
+    }
+}
+
 pub fn show(
     ui: &mut egui::Ui,
     frames: &[(f32, f32)],
     sample_rate: u32,
     settings: AudioSettings,
     elapsed_seconds: f64,
+    mode: &mut VisualizationMode,
 ) {
     let settings = settings.validated();
     let (left_hz, right_hz) = settings.channel_frequencies(elapsed_seconds);
 
     ui.horizontal_wrapped(|ui| {
-        ui.heading("Live harmonic visualizer");
+        ui.heading("Harmonic geometry engine");
         ui.separator();
         ui.colored_label(LEFT_COLOR, format!("LEFT  {left_hz:.2} Hz"));
         ui.colored_label(RIGHT_COLOR, format!("RIGHT  {right_hz:.2} Hz"));
         ui.strong(format!("Δ {:.2} Hz", right_hz - left_hz));
     });
-    ui.label(format!(
-        "Measured output · {sample_rate} Hz sample rate · {} captured frames",
-        frames.len()
-    ));
-    ui.label(
-        "The phase figure and spectrum are derived from the samples sent to the audio device, not a simulated animation.",
-    );
-    ui.add_space(8.0);
-
-    let total_width = ui.available_width().max(640.0);
-    ui.horizontal_top(|ui| {
-        draw_lissajous(
-            ui,
-            frames,
-            Vec2::new(total_width * 0.57, 340.0),
-        );
-        ui.vertical(|ui| {
-            let chart_width = (total_width * 0.40).max(250.0);
-            draw_waveform(
-                ui,
-                frames,
-                Vec2::new(chart_width, 162.0),
-                0,
-            );
-            ui.add_space(8.0);
-            draw_waveform(
-                ui,
-                frames,
-                Vec2::new(chart_width, 162.0),
-                1,
-            );
-        });
-    });
-
-    ui.add_space(10.0);
-    ui.separator();
     ui.horizontal_wrapped(|ui| {
-        ui.heading("Frequency spectrum");
-        ui.label("FFT · dBFS · 0–1,000 Hz");
+        egui::ComboBox::from_label("Visualization")
+            .selected_text(mode.label())
+            .show_ui(ui, |ui| {
+                for option in VisualizationMode::ALL {
+                    ui.selectable_value(mode, option, option.label());
+                }
+            });
+        ui.label(format!("{sample_rate} Hz · {} captured frames", frames.len()));
+        ui.label(format!("Noise: {} · mix {:.3}", settings.noise_kind.label(), settings.noise_level));
     });
-    draw_spectrum(
-        ui,
-        frames,
-        sample_rate,
-        left_hz,
-        right_hz,
-        Vec2::new(total_width, 285.0),
-    );
+    ui.add_space(8.0);
+
+    match *mode {
+        VisualizationMode::LiveDashboard => {
+            let total_width = ui.available_width().max(640.0);
+            ui.horizontal_top(|ui| {
+                draw_lissajous(ui, frames, Vec2::new(total_width * 0.57, 340.0));
+                ui.vertical(|ui| {
+                    let chart_width = (total_width * 0.40).max(250.0);
+                    draw_waveform(ui, frames, Vec2::new(chart_width, 162.0), 0);
+                    ui.add_space(8.0);
+                    draw_waveform(ui, frames, Vec2::new(chart_width, 162.0), 1);
+                });
+            });
+            ui.add_space(10.0);
+            ui.heading("Measured frequency spectrum");
+            draw_spectrum(ui, frames, sample_rate, left_hz, right_hz,
+                Vec2::new(total_width, 285.0));
+        }
+        VisualizationMode::Lissajous => {
+            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(480.0));
+            draw_lissajous(ui, frames, size);
+        }
+        VisualizationMode::Waveforms => {
+            let width = ui.available_width().max(640.0);
+            draw_waveform(ui, frames, Vec2::new(width, 230.0), 0);
+            ui.add_space(12.0);
+            draw_waveform(ui, frames, Vec2::new(width, 230.0), 1);
+        }
+        VisualizationMode::Spectrum => {
+            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(400.0));
+            draw_spectrum(ui, frames, sample_rate, left_hz, right_hz, size);
+        }
+        VisualizationMode::CymaticMandala => {
+            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(560.0));
+            draw_cymatic_mandala(ui, left_hz, right_hz, settings.noise_level, elapsed_seconds, size);
+        }
+        VisualizationMode::InterferenceField => {
+            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(560.0));
+            draw_interference_field(ui, left_hz, right_hz, settings.noise_level, elapsed_seconds, size);
+        }
+        VisualizationMode::HarmonicRings => {
+            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(560.0));
+            draw_harmonic_rings(ui, left_hz, right_hz, settings.noise_level, elapsed_seconds, size);
+        }
+    }
 
     ui.add_space(8.0);
-    ui.colored_label(
-        MUTED,
-        "Interpretation: the pure sine carriers create strong fundamental peaks. Pink/white noise adds a broadband floor. The 10 Hz binaural difference is the separation between the ear signals; it is not an extra 10 Hz acoustic tone in either channel.",
-    );
+    ui.colored_label(MUTED,
+        "Measured views use captured output samples. Geometry modes are deterministic mathematical visual models driven by the current carrier frequencies, binaural difference, noise mix, and elapsed phase; they are exploratory visualizations, not literal cymatic measurements or evidence of hidden physical harmonics.");
+
+}
+
+
+fn draw_cymatic_mandala(
+    ui: &mut egui::Ui, left_hz: f32, right_hz: f32, noise: f32,
+    elapsed: f64, size: Vec2,
+) {
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 5.0, BACKGROUND);
+    let center = rect.center();
+    let radius = rect.width().min(rect.height()) * 0.43;
+    let phase = elapsed as f32 * 0.55;
+    let beat_ratio = (right_hz - left_hz).abs().clamp(0.5, 30.0);
+    let lobes = (beat_ratio.round() as usize).clamp(2, 30);
+    for ring in 1..=8 {
+        let r = radius * ring as f32 / 8.0;
+        let mut points = Vec::with_capacity(721);
+        for step in 0..=720 {
+            let theta = TAU * step as f32 / 720.0;
+            let wave = (lobes as f32 * theta + phase).sin();
+            let overtone = (2.0 * theta * (left_hz / 100.0).clamp(1.0, 10.0) - phase * 0.7).cos();
+            let ripple = 1.0 + 0.16 * wave + 0.06 * overtone + noise * 0.3 * (3.0 * theta + phase).sin();
+            let rr = r * ripple;
+            points.push(Pos2::new(center.x + rr * theta.cos(), center.y + rr * theta.sin()));
+        }
+        let color = if ring % 2 == 0 { LEFT_COLOR } else { RIGHT_COLOR };
+        painter.add(Shape::line(points, Stroke::new(1.0 + ring as f32 * 0.12, color.gamma_multiply(0.35 + ring as f32 * 0.07))));
+    }
+    painter.circle_filled(center, 3.0, TRACE_COLOR);
+    painter.text(rect.left_top()+Vec2::splat(12.0), Align2::LEFT_TOP,
+        format!("{lobes} phase lobes · beat-driven radial modulation"), FontId::monospace(12.0), MUTED);
+}
+
+fn draw_interference_field(
+    ui: &mut egui::Ui, left_hz: f32, right_hz: f32, noise: f32,
+    elapsed: f64, size: Vec2,
+) {
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 5.0, BACKGROUND);
+    let cell = 5.0_f32;
+    let phase = elapsed as f32 * 0.8;
+    let scale = 0.035 + (left_hz / 1000.0) * 0.025;
+    let beat = (right_hz-left_hz).abs();
+    let mut y = rect.top();
+    while y < rect.bottom() {
+        let mut x = rect.left();
+        while x < rect.right() {
+            let nx = (x-rect.center().x) / rect.width().max(1.0);
+            let ny = (y-rect.center().y) / rect.height().max(1.0);
+            let d1 = ((nx+0.28).hypot(ny) * left_hz * scale - phase).sin();
+            let d2 = ((nx-0.28).hypot(ny) * right_hz * scale + phase*0.7).sin();
+            let interference = (d1+d2)*0.5;
+            let intensity = (interference.abs() * (1.0-noise*0.5)).clamp(0.0,1.0);
+            let color = if interference >= 0.0 { LEFT_COLOR } else { RIGHT_COLOR };
+            painter.rect_filled(Rect::from_min_size(Pos2::new(x,y),Vec2::splat(cell-0.7)),
+                0.0, color.gamma_multiply(intensity*0.82));
+            x += cell;
+        }
+        y += cell;
+    }
+    painter.text(rect.left_top()+Vec2::splat(12.0), Align2::LEFT_TOP,
+        format!("Two-source wave interference · Δ {beat:.2} Hz"), FontId::monospace(12.0), Color32::WHITE);
+}
+
+fn draw_harmonic_rings(
+    ui: &mut egui::Ui, left_hz: f32, right_hz: f32, noise: f32,
+    elapsed: f64, size: Vec2,
+) {
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 5.0, BACKGROUND);
+    let center = rect.center();
+    let radius = rect.width().min(rect.height())*0.43;
+    let base = left_hz.min(right_hz).max(1.0);
+    let ratio = (right_hz/base).clamp(1.0,2.0);
+    let phase = elapsed as f32;
+    for harmonic in 1..=16 {
+        let r = radius * harmonic as f32 / 16.0;
+        let mut points = Vec::with_capacity(721);
+        for step in 0..=720 {
+            let theta = TAU*step as f32/720.0;
+            let a = (harmonic as f32*theta*ratio + phase*0.25).sin();
+            let b = ((harmonic+1) as f32*theta - phase*0.18).cos();
+            let modulated = r*(1.0+0.11*a+0.045*b+noise*0.2*(3.0*theta).sin());
+            points.push(Pos2::new(center.x+modulated*theta.cos(),center.y+modulated*theta.sin()));
+        }
+        let color = if harmonic%2==0 {LEFT_COLOR} else {RIGHT_COLOR};
+        painter.add(Shape::line(points,Stroke::new(1.0,color.gamma_multiply(0.28+harmonic as f32*0.04))));
+    }
+    painter.text(rect.left_top()+Vec2::splat(12.0),Align2::LEFT_TOP,
+        format!("16 geometric orders · carrier ratio {ratio:.4}"),FontId::monospace(12.0),MUTED);
 }
 
 fn draw_lissajous(ui: &mut egui::Ui, frames: &[(f32, f32)], size: Vec2) {
