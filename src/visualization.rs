@@ -144,6 +144,21 @@ impl VisualizationMode {
     }
 }
 
+impl From<u8> for VisualizationMode {
+    fn from(value: u8) -> Self {
+        match value {
+            0 => VisualizationMode::LiveDashboard,
+            1 => VisualizationMode::Lissajous,
+            2 => VisualizationMode::Waveforms,
+            3 => VisualizationMode::Spectrum,
+            4 => VisualizationMode::CymaticMandala,
+            5 => VisualizationMode::InterferenceField,
+            6 => VisualizationMode::HarmonicRings,
+            _ => VisualizationMode::default(),
+        }
+    }
+}
+
 pub fn show(
     ui: &mut egui::Ui,
     frames: &[(f32, f32)],

@@ -4,7 +4,7 @@ use std::{
     path::PathBuf,
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
         mpsc::{self, Receiver},
     },
     thread,
@@ -28,7 +28,7 @@ pub struct GatewayApp {
     exporting: bool,
     export_status: String,
     visualizer_enabled: bool,
-    visualizer_mode: visualization::VisualizationMode,
+    visualizer_mode: Arc<AtomicU8>,
     visualizer_close_signal: Arc<AtomicBool>,
 }
 
@@ -39,7 +39,7 @@ impl GatewayApp {
             Ok(audio) => Self {
                 settings,
                 visualizer_enabled: false,
-                visualizer_mode: visualization::VisualizationMode::default(),
+                visualizer_mode: Arc::new(AtomicU8::new(visualization::VisualizationMode::default() as u8)),
                 visualizer_close_signal: Arc::new(AtomicBool::new(false)),
                 audio: Some(audio),
                 audio_error: None,
@@ -50,7 +50,7 @@ impl GatewayApp {
             Err(error) => Self {
                 settings,
                 visualizer_enabled: false,
-                visualizer_mode: visualization::VisualizationMode::default(),
+                visualizer_mode: Arc::new(AtomicU8::new(visualization::VisualizationMode::default() as u8)),
                 visualizer_close_signal: Arc::new(AtomicBool::new(false)),
                 audio: None,
                 audio_error: Some(error.clone()),
@@ -349,7 +349,7 @@ impl eframe::App for GatewayApp {
                 let elapsed_seconds = audio.elapsed_seconds();
                 let settings = self.settings.validated();
                 let close_signal = Arc::clone(&self.visualizer_close_signal);
-                let mut visualizer_mode = self.visualizer_mode;
+                let visualizer_mode = Arc::clone(&self.visualizer_mode);
                 let viewport_id =
                     egui::ViewportId::from_hash_of("gateway_harmonic_visualizer");
                 let viewport_builder = egui::ViewportBuilder::default()
@@ -371,17 +371,18 @@ impl eframe::App for GatewayApp {
                             .request_repaint_after(Duration::from_millis(66));
 
                         let frames = tap.snapshot();
+                        let mut mode = visualization::VisualizationMode::from(visualizer_mode.load(Ordering::Acquire));
                         visualization::show(
                             visualizer_ui,
                             &frames,
                             sample_rate,
                             settings,
                             elapsed_seconds,
-                            &mut visualizer_mode,
+                            &mut mode,
                         );
+                        visualizer_mode.store(mode as u8, Ordering::Release);
                     },
                 );
-                self.visualizer_mode = visualizer_mode;
             }
         }
     }
