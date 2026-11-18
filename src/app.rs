@@ -16,8 +16,7 @@ use eframe::egui;
 use crate::{
     audio::AudioEngine,
     dsp::{AudioSettings, NoiseKind},
-    export,
-    visualization,
+    export, visualization,
 };
 
 pub struct GatewayApp {
@@ -39,24 +38,31 @@ impl GatewayApp {
             Ok(audio) => Self {
                 settings,
                 visualizer_enabled: false,
-                visualizer_mode: Arc::new(AtomicU8::new(visualization::VisualizationMode::default() as u8)),
+                visualizer_mode: Arc::new(AtomicU8::new(
+                    visualization::VisualizationMode::default() as u8,
+                )),
                 visualizer_close_signal: Arc::new(AtomicBool::new(false)),
                 audio: Some(audio),
                 audio_error: None,
                 export_receiver: None,
                 exporting: false,
-                export_status: "Ready. Use stereo headphones for channel-separated tones.".to_owned(),
+                export_status: "Ready. Use stereo headphones for channel-separated tones."
+                    .to_owned(),
             },
             Err(error) => Self {
                 settings,
                 visualizer_enabled: false,
-                visualizer_mode: Arc::new(AtomicU8::new(visualization::VisualizationMode::default() as u8)),
+                visualizer_mode: Arc::new(AtomicU8::new(
+                    visualization::VisualizationMode::default() as u8,
+                )),
                 visualizer_close_signal: Arc::new(AtomicBool::new(false)),
                 audio: None,
                 audio_error: Some(error.clone()),
                 export_receiver: None,
                 exporting: false,
-                export_status: format!("Live output unavailable: {error}. WAV export is still available."),
+                export_status: format!(
+                    "Live output unavailable: {error}. WAV export is still available."
+                ),
             },
         }
     }
@@ -75,7 +81,8 @@ impl GatewayApp {
         let (sender, receiver) = mpsc::channel();
         self.export_receiver = Some(receiver);
         self.exporting = true;
-        self.export_status = "Choose a destination. WAV rendering will run in the background.".to_owned();
+        self.export_status =
+            "Choose a destination. WAV rendering will run in the background.".to_owned();
 
         thread::spawn(move || {
             // The native save dialog and file rendering are isolated from both the
@@ -85,31 +92,34 @@ impl GatewayApp {
                 .set_file_name("gateway-audio-session.wav")
                 .save_file()
                 .ok_or_else(|| "Export cancelled.".to_owned())
-                .and_then(|path| {
-                    export::write_wav(&path, sample_rate, settings).map(|()| path)
-                });
+                .and_then(|path| export::write_wav(&path, sample_rate, settings).map(|()| path));
             let _ = sender.send(result);
         });
     }
 
     fn format_time(seconds: f64) -> String {
         let total = seconds.max(0.0) as u64;
-        format!("{:02}:{:02}:{:02}", total / 3_600, (total / 60) % 60, total % 60)
+        format!(
+            "{:02}:{:02}:{:02}",
+            total / 3_600,
+            (total / 60) % 60,
+            total % 60
+        )
     }
 }
 
 impl eframe::App for GatewayApp {
     fn logic(&mut self, context: &egui::Context, _frame: &mut eframe::Frame) {
-        let completed = self
-            .export_receiver
-            .as_ref()
-            .and_then(|receiver| match receiver.try_recv() {
-                Ok(result) => Some(result),
-                Err(mpsc::TryRecvError::Empty) => None,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    Some(Err("The WAV export worker stopped unexpectedly.".to_owned()))
-                }
-            });
+        let completed =
+            self.export_receiver
+                .as_ref()
+                .and_then(|receiver| match receiver.try_recv() {
+                    Ok(result) => Some(result),
+                    Err(mpsc::TryRecvError::Empty) => None,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        Some(Err("The WAV export worker stopped unexpectedly.".to_owned()))
+                    }
+                });
 
         if let Some(result) = completed {
             self.exporting = false;
@@ -342,48 +352,49 @@ impl eframe::App for GatewayApp {
             audio.set_settings(self.settings);
         }
 
-        if self.visualizer_enabled {
-            if let Some(audio) = &self.audio {
-                let tap = audio.visualization_tap();
-                let sample_rate = audio.sample_rate();
-                let elapsed_seconds = audio.elapsed_seconds();
-                let settings = self.settings.validated();
-                let close_signal = Arc::clone(&self.visualizer_close_signal);
-                let visualizer_mode = Arc::clone(&self.visualizer_mode);
-                let viewport_id =
-                    egui::ViewportId::from_hash_of("gateway_harmonic_visualizer");
-                let viewport_builder = egui::ViewportBuilder::default()
-                    .with_title("Gateway Harmonic Visualizer")
-                    .with_inner_size([1120.0, 850.0])
-                    .with_min_inner_size([780.0, 650.0]);
+        if self.visualizer_enabled
+            && let Some(audio) = &self.audio
+        {
+            let tap = audio.visualization_tap();
+            let sample_rate = audio.sample_rate();
+            let elapsed_seconds = audio.elapsed_seconds();
+            let settings = self.settings.validated();
+            let close_signal = Arc::clone(&self.visualizer_close_signal);
+            let visualizer_mode = Arc::clone(&self.visualizer_mode);
+            let viewport_id = egui::ViewportId::from_hash_of("gateway_harmonic_visualizer");
+            let viewport_builder = egui::ViewportBuilder::default()
+                .with_title("Gateway Harmonic Visualizer")
+                .with_inner_size([1120.0, 850.0])
+                .with_min_inner_size([780.0, 650.0]);
 
-                ui.ctx().show_viewport_deferred(
-                    viewport_id,
-                    viewport_builder,
-                    move |visualizer_ui, _viewport_class| {
-                        if visualizer_ui.input(|input| input.viewport().close_requested()) {
-                            close_signal.store(true, Ordering::Release);
-                            return;
-                        }
+            ui.ctx().show_viewport_deferred(
+                viewport_id,
+                viewport_builder,
+                move |visualizer_ui, _viewport_class| {
+                    if visualizer_ui.input(|input| input.viewport().close_requested()) {
+                        close_signal.store(true, Ordering::Release);
+                        return;
+                    }
 
-                        visualizer_ui
-                            .ctx()
-                            .request_repaint_after(Duration::from_millis(66));
+                    visualizer_ui
+                        .ctx()
+                        .request_repaint_after(Duration::from_millis(66));
 
-                        let frames = tap.snapshot();
-                        let mut mode = visualization::VisualizationMode::from(visualizer_mode.load(Ordering::Acquire));
-                        visualization::show(
-                            visualizer_ui,
-                            &frames,
-                            sample_rate,
-                            settings,
-                            elapsed_seconds,
-                            &mut mode,
-                        );
-                        visualizer_mode.store(mode as u8, Ordering::Release);
-                    },
-                );
-            }
+                    let frames = tap.snapshot();
+                    let mut mode = visualization::VisualizationMode::from(
+                        visualizer_mode.load(Ordering::Acquire),
+                    );
+                    visualization::show(
+                        visualizer_ui,
+                        &frames,
+                        sample_rate,
+                        settings,
+                        elapsed_seconds,
+                        &mut mode,
+                    );
+                    visualizer_mode.store(mode as u8, Ordering::Release);
+                },
+            );
         }
     }
 }

@@ -127,8 +127,13 @@ pub enum VisualizationMode {
 
 impl VisualizationMode {
     pub const ALL: [Self; 7] = [
-        Self::LiveDashboard, Self::Lissajous, Self::Waveforms, Self::Spectrum,
-        Self::CymaticMandala, Self::InterferenceField, Self::HarmonicRings,
+        Self::LiveDashboard,
+        Self::Lissajous,
+        Self::Waveforms,
+        Self::Spectrum,
+        Self::CymaticMandala,
+        Self::InterferenceField,
+        Self::HarmonicRings,
     ];
 
     pub fn label(self) -> &'static str {
@@ -185,8 +190,15 @@ pub fn show(
                     ui.selectable_value(mode, option, option.label());
                 }
             });
-        ui.label(format!("{sample_rate} Hz · {} captured frames", frames.len()));
-        ui.label(format!("Noise: {} · mix {:.3}", settings.noise_kind.label(), settings.noise_level));
+        ui.label(format!(
+            "{sample_rate} Hz · {} captured frames",
+            frames.len()
+        ));
+        ui.label(format!(
+            "Noise: {} · mix {:.3}",
+            settings.noise_kind.label(),
+            settings.noise_level
+        ));
     });
     ui.add_space(8.0);
 
@@ -204,11 +216,20 @@ pub fn show(
             });
             ui.add_space(10.0);
             ui.heading("Measured frequency spectrum");
-            draw_spectrum(ui, frames, sample_rate, left_hz, right_hz,
-                Vec2::new(total_width, 285.0));
+            draw_spectrum(
+                ui,
+                frames,
+                sample_rate,
+                left_hz,
+                right_hz,
+                Vec2::new(total_width, 285.0),
+            );
         }
         VisualizationMode::Lissajous => {
-            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(480.0));
+            let size = Vec2::new(
+                ui.available_width().max(640.0),
+                ui.available_height().max(480.0),
+            );
             draw_lissajous(ui, frames, size);
         }
         VisualizationMode::Waveforms => {
@@ -218,33 +239,68 @@ pub fn show(
             draw_waveform(ui, frames, Vec2::new(width, 230.0), 1);
         }
         VisualizationMode::Spectrum => {
-            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(400.0));
+            let size = Vec2::new(
+                ui.available_width().max(640.0),
+                ui.available_height().max(400.0),
+            );
             draw_spectrum(ui, frames, sample_rate, left_hz, right_hz, size);
         }
         VisualizationMode::CymaticMandala => {
-            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(560.0));
-            draw_cymatic_mandala(ui, left_hz, right_hz, settings.noise_level, elapsed_seconds, size);
+            let size = Vec2::new(
+                ui.available_width().max(640.0),
+                ui.available_height().max(560.0),
+            );
+            draw_cymatic_mandala(
+                ui,
+                left_hz,
+                right_hz,
+                settings.noise_level,
+                elapsed_seconds,
+                size,
+            );
         }
         VisualizationMode::InterferenceField => {
-            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(560.0));
-            draw_interference_field(ui, left_hz, right_hz, settings.noise_level, elapsed_seconds, size);
+            let size = Vec2::new(
+                ui.available_width().max(640.0),
+                ui.available_height().max(560.0),
+            );
+            draw_interference_field(
+                ui,
+                left_hz,
+                right_hz,
+                settings.noise_level,
+                elapsed_seconds,
+                size,
+            );
         }
         VisualizationMode::HarmonicRings => {
-            let size = Vec2::new(ui.available_width().max(640.0), ui.available_height().max(560.0));
-            draw_harmonic_rings(ui, left_hz, right_hz, settings.noise_level, elapsed_seconds, size);
+            let size = Vec2::new(
+                ui.available_width().max(640.0),
+                ui.available_height().max(560.0),
+            );
+            draw_harmonic_rings(
+                ui,
+                left_hz,
+                right_hz,
+                settings.noise_level,
+                elapsed_seconds,
+                size,
+            );
         }
     }
 
     ui.add_space(8.0);
     ui.colored_label(MUTED,
         "Measured views use captured output samples. Geometry modes are deterministic mathematical visual models driven by the current carrier frequencies, binaural difference, noise mix, and elapsed phase; they are exploratory visualizations, not literal cymatic measurements or evidence of hidden physical harmonics.");
-
 }
 
-
 fn draw_cymatic_mandala(
-    ui: &mut egui::Ui, left_hz: f32, right_hz: f32, noise: f32,
-    elapsed: f64, size: Vec2,
+    ui: &mut egui::Ui,
+    left_hz: f32,
+    right_hz: f32,
+    noise: f32,
+    elapsed: f64,
+    size: Vec2,
 ) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
@@ -261,21 +317,44 @@ fn draw_cymatic_mandala(
             let theta = TAU * step as f32 / 720.0;
             let wave = (lobes as f32 * theta + phase).sin();
             let overtone = (2.0 * theta * (left_hz / 100.0).clamp(1.0, 10.0) - phase * 0.7).cos();
-            let ripple = 1.0 + 0.16 * wave + 0.06 * overtone + noise * 0.3 * (3.0 * theta + phase).sin();
+            let ripple =
+                1.0 + 0.16 * wave + 0.06 * overtone + noise * 0.3 * (3.0 * theta + phase).sin();
             let rr = r * ripple;
-            points.push(Pos2::new(center.x + rr * theta.cos(), center.y + rr * theta.sin()));
+            points.push(Pos2::new(
+                center.x + rr * theta.cos(),
+                center.y + rr * theta.sin(),
+            ));
         }
-        let color = if ring % 2 == 0 { LEFT_COLOR } else { RIGHT_COLOR };
-        painter.add(Shape::line(points, Stroke::new(1.0 + ring as f32 * 0.12, color.gamma_multiply(0.35 + ring as f32 * 0.07))));
+        let color = if ring % 2 == 0 {
+            LEFT_COLOR
+        } else {
+            RIGHT_COLOR
+        };
+        painter.add(Shape::line(
+            points,
+            Stroke::new(
+                1.0 + ring as f32 * 0.12,
+                color.gamma_multiply(0.35 + ring as f32 * 0.07),
+            ),
+        ));
     }
     painter.circle_filled(center, 3.0, TRACE_COLOR);
-    painter.text(rect.left_top()+Vec2::splat(12.0), Align2::LEFT_TOP,
-        format!("{lobes} phase lobes · beat-driven radial modulation"), FontId::monospace(12.0), MUTED);
+    painter.text(
+        rect.left_top() + Vec2::splat(12.0),
+        Align2::LEFT_TOP,
+        format!("{lobes} phase lobes · beat-driven radial modulation"),
+        FontId::monospace(12.0),
+        MUTED,
+    );
 }
 
 fn draw_interference_field(
-    ui: &mut egui::Ui, left_hz: f32, right_hz: f32, noise: f32,
-    elapsed: f64, size: Vec2,
+    ui: &mut egui::Ui,
+    left_hz: f32,
+    right_hz: f32,
+    noise: f32,
+    elapsed: f64,
+    size: Vec2,
 ) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
@@ -283,55 +362,86 @@ fn draw_interference_field(
     let cell = 5.0_f32;
     let phase = elapsed as f32 * 0.8;
     let scale = 0.035 + (left_hz / 1000.0) * 0.025;
-    let beat = (right_hz-left_hz).abs();
+    let beat = (right_hz - left_hz).abs();
     let mut y = rect.top();
     while y < rect.bottom() {
         let mut x = rect.left();
         while x < rect.right() {
-            let nx = (x-rect.center().x) / rect.width().max(1.0);
-            let ny = (y-rect.center().y) / rect.height().max(1.0);
-            let d1 = ((nx+0.28).hypot(ny) * left_hz * scale - phase).sin();
-            let d2 = ((nx-0.28).hypot(ny) * right_hz * scale + phase*0.7).sin();
-            let interference = (d1+d2)*0.5;
-            let intensity = (interference.abs() * (1.0-noise*0.5)).clamp(0.0,1.0);
-            let color = if interference >= 0.0 { LEFT_COLOR } else { RIGHT_COLOR };
-            painter.rect_filled(Rect::from_min_size(Pos2::new(x,y),Vec2::splat(cell-0.7)),
-                0.0, color.gamma_multiply(intensity*0.82));
+            let nx = (x - rect.center().x) / rect.width().max(1.0);
+            let ny = (y - rect.center().y) / rect.height().max(1.0);
+            let d1 = ((nx + 0.28).hypot(ny) * left_hz * scale - phase).sin();
+            let d2 = ((nx - 0.28).hypot(ny) * right_hz * scale + phase * 0.7).sin();
+            let interference = (d1 + d2) * 0.5;
+            let intensity = (interference.abs() * (1.0 - noise * 0.5)).clamp(0.0, 1.0);
+            let color = if interference >= 0.0 {
+                LEFT_COLOR
+            } else {
+                RIGHT_COLOR
+            };
+            painter.rect_filled(
+                Rect::from_min_size(Pos2::new(x, y), Vec2::splat(cell - 0.7)),
+                0.0,
+                color.gamma_multiply(intensity * 0.82),
+            );
             x += cell;
         }
         y += cell;
     }
-    painter.text(rect.left_top()+Vec2::splat(12.0), Align2::LEFT_TOP,
-        format!("Two-source wave interference · Δ {beat:.2} Hz"), FontId::monospace(12.0), Color32::WHITE);
+    painter.text(
+        rect.left_top() + Vec2::splat(12.0),
+        Align2::LEFT_TOP,
+        format!("Two-source wave interference · Δ {beat:.2} Hz"),
+        FontId::monospace(12.0),
+        Color32::WHITE,
+    );
 }
 
 fn draw_harmonic_rings(
-    ui: &mut egui::Ui, left_hz: f32, right_hz: f32, noise: f32,
-    elapsed: f64, size: Vec2,
+    ui: &mut egui::Ui,
+    left_hz: f32,
+    right_hz: f32,
+    noise: f32,
+    elapsed: f64,
+    size: Vec2,
 ) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 5.0, BACKGROUND);
     let center = rect.center();
-    let radius = rect.width().min(rect.height())*0.43;
+    let radius = rect.width().min(rect.height()) * 0.43;
     let base = left_hz.min(right_hz).max(1.0);
-    let ratio = (right_hz/base).clamp(1.0,2.0);
+    let ratio = (right_hz / base).clamp(1.0, 2.0);
     let phase = elapsed as f32;
     for harmonic in 1..=16 {
         let r = radius * harmonic as f32 / 16.0;
         let mut points = Vec::with_capacity(721);
         for step in 0..=720 {
-            let theta = TAU*step as f32/720.0;
-            let a = (harmonic as f32*theta*ratio + phase*0.25).sin();
-            let b = ((harmonic+1) as f32*theta - phase*0.18).cos();
-            let modulated = r*(1.0+0.11*a+0.045*b+noise*0.2*(3.0*theta).sin());
-            points.push(Pos2::new(center.x+modulated*theta.cos(),center.y+modulated*theta.sin()));
+            let theta = TAU * step as f32 / 720.0;
+            let a = (harmonic as f32 * theta * ratio + phase * 0.25).sin();
+            let b = ((harmonic + 1) as f32 * theta - phase * 0.18).cos();
+            let modulated = r * (1.0 + 0.11 * a + 0.045 * b + noise * 0.2 * (3.0 * theta).sin());
+            points.push(Pos2::new(
+                center.x + modulated * theta.cos(),
+                center.y + modulated * theta.sin(),
+            ));
         }
-        let color = if harmonic%2==0 {LEFT_COLOR} else {RIGHT_COLOR};
-        painter.add(Shape::line(points,Stroke::new(1.0,color.gamma_multiply(0.28+harmonic as f32*0.04))));
+        let color = if harmonic % 2 == 0 {
+            LEFT_COLOR
+        } else {
+            RIGHT_COLOR
+        };
+        painter.add(Shape::line(
+            points,
+            Stroke::new(1.0, color.gamma_multiply(0.28 + harmonic as f32 * 0.04)),
+        ));
     }
-    painter.text(rect.left_top()+Vec2::splat(12.0),Align2::LEFT_TOP,
-        format!("16 geometric orders · carrier ratio {ratio:.4}"),FontId::monospace(12.0),MUTED);
+    painter.text(
+        rect.left_top() + Vec2::splat(12.0),
+        Align2::LEFT_TOP,
+        format!("16 geometric orders · carrier ratio {ratio:.4}"),
+        FontId::monospace(12.0),
+        MUTED,
+    );
 }
 
 fn draw_lissajous(ui: &mut egui::Ui, frames: &[(f32, f32)], size: Vec2) {
@@ -375,10 +485,7 @@ fn draw_lissajous(ui: &mut egui::Ui, frames: &[(f32, f32)], size: Vec2) {
         }
 
         if points.len() >= 2 {
-            painter.add(Shape::line(
-                points,
-                Stroke::new(1.45, TRACE_COLOR),
-            ));
+            painter.add(Shape::line(points, Stroke::new(1.45, TRACE_COLOR)));
         }
 
         painter.text(
@@ -398,12 +505,7 @@ fn draw_lissajous(ui: &mut egui::Ui, frames: &[(f32, f32)], size: Vec2) {
     });
 }
 
-fn draw_waveform(
-    ui: &mut egui::Ui,
-    frames: &[(f32, f32)],
-    size: Vec2,
-    channel: usize,
-) {
+fn draw_waveform(ui: &mut egui::Ui, frames: &[(f32, f32)], size: Vec2, channel: usize) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 4.0, BACKGROUND);
@@ -427,7 +529,10 @@ fn draw_waveform(
     );
     draw_grid(&painter, plot, 4, 2);
     painter.line_segment(
-        [Pos2::new(plot.left(), plot.center().y), Pos2::new(plot.right(), plot.center().y)],
+        [
+            Pos2::new(plot.left(), plot.center().y),
+            Pos2::new(plot.right(), plot.center().y),
+        ],
         Stroke::new(1.0, MUTED),
     );
 
@@ -502,8 +607,7 @@ fn fft_channel(frames: &[(f32, f32)], sample_rate: u32, channel: usize) -> Vec<f
 
     fft_in_place(&mut values);
 
-    let max_bin = ((SPECTRUM_MAX_HZ * FFT_SIZE as f32 / sample_rate as f32).floor()
-        as usize)
+    let max_bin = ((SPECTRUM_MAX_HZ * FFT_SIZE as f32 / sample_rate as f32).floor() as usize)
         .min(FFT_SIZE / 2);
     let mut magnitudes = Vec::with_capacity(max_bin + 1);
 
@@ -549,24 +653,14 @@ fn fft_in_place(values: &mut [(f32, f32)]) {
                 let even = values[base + offset];
                 let odd = values[base + offset + half];
 
-                let product_real =
-                    odd.0 * twiddle_real - odd.1 * twiddle_imaginary;
-                let product_imaginary =
-                    odd.0 * twiddle_imaginary + odd.1 * twiddle_real;
+                let product_real = odd.0 * twiddle_real - odd.1 * twiddle_imaginary;
+                let product_imaginary = odd.0 * twiddle_imaginary + odd.1 * twiddle_real;
 
-                values[base + offset] = (
-                    even.0 + product_real,
-                    even.1 + product_imaginary,
-                );
-                values[base + offset + half] = (
-                    even.0 - product_real,
-                    even.1 - product_imaginary,
-                );
+                values[base + offset] = (even.0 + product_real, even.1 + product_imaginary);
+                values[base + offset + half] = (even.0 - product_real, even.1 - product_imaginary);
 
-                let next_real =
-                    twiddle_real * step_real - twiddle_imaginary * step_imaginary;
-                twiddle_imaginary =
-                    twiddle_real * step_imaginary + twiddle_imaginary * step_real;
+                let next_real = twiddle_real * step_real - twiddle_imaginary * step_imaginary;
+                twiddle_imaginary = twiddle_real * step_imaginary + twiddle_imaginary * step_real;
                 twiddle_real = next_real;
             }
         }
@@ -607,7 +701,7 @@ fn draw_spectrum(
     }
 
     for step in 0..=5 {
-        let db = -(step as i32) * 20;
+        let db = -step * 20;
         let y = plot.bottom() - plot.height() * step as f32 / 5.0;
         painter.text(
             Pos2::new(plot.left() - 8.0, y),
@@ -737,7 +831,7 @@ fn draw_centered_text(painter: &egui::Painter, rect: Rect, message: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{AudioTap, fft_channel, FFT_SIZE};
+    use super::{AudioTap, FFT_SIZE, fft_channel};
 
     #[test]
     fn audio_tap_returns_the_latest_published_stereo_frames() {
@@ -779,6 +873,9 @@ mod tests {
         let right_hz = peak_bin(&right) as f32 * sample_rate as f32 / FFT_SIZE as f32;
 
         assert!((left_hz - 200.0).abs() < 4.0, "left peak was {left_hz} Hz");
-        assert!((right_hz - 210.0).abs() < 4.0, "right peak was {right_hz} Hz");
+        assert!(
+            (right_hz - 210.0).abs() < 4.0,
+            "right peak was {right_hz} Hz"
+        );
     }
 }

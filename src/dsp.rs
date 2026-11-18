@@ -134,11 +134,7 @@ impl StereoSynth {
 
     /// Return one left/right sample pair in the range [-0.95, 0.95].
     /// `frame_index` is the zero-based frame position within the current take.
-    pub fn render_frame(
-        &mut self,
-        settings: &AudioSettings,
-        frame_index: u64,
-    ) -> (f32, f32) {
+    pub fn render_frame(&mut self, settings: &AudioSettings, frame_index: u64) -> (f32, f32) {
         // Callers validate settings when they cross the GUI / export boundary;
         // do not repeat clamps and conversions for every sample in real time.
         let sample_rate = self.sample_rate;
@@ -147,15 +143,11 @@ impl StereoSynth {
         let total_frames = settings.total_seconds() as f32 * sample_rate;
 
         let tuning_sample = self.tuning_phase.sin();
-        self.tuning_phase = wrap_phase(
-            self.tuning_phase + TAU * settings.tuning_hz / sample_rate,
-        );
+        self.tuning_phase = wrap_phase(self.tuning_phase + TAU * settings.tuning_hz / sample_rate);
 
         let left_tone = self.left_phase.sin();
         let right_tone = self.right_phase.sin();
-        self.left_phase = wrap_phase(
-            self.left_phase + TAU * settings.carrier_hz / sample_rate,
-        );
+        self.left_phase = wrap_phase(self.left_phase + TAU * settings.carrier_hz / sample_rate);
         self.right_phase = wrap_phase(
             self.right_phase + TAU * (settings.carrier_hz + settings.beat_hz) / sample_rate,
         );
@@ -170,8 +162,7 @@ impl StereoSynth {
             let transition = if settings.tuning_seconds == 0 {
                 1.0
             } else {
-                ((frame_index as f32 - tuning_frames) / transition_frames)
-                    .clamp(0.0, 1.0)
+                ((frame_index as f32 - tuning_frames) / transition_frames).clamp(0.0, 1.0)
             };
             let blend = smoothstep(transition);
             (
@@ -187,7 +178,8 @@ impl StereoSynth {
             ((frame_index as f32 - noise_start) / (sample_rate * 2.0)).clamp(0.0, 1.0)
         };
         let noise_gain = settings.noise_level * noise_ramp;
-        let (left_noise, right_noise) = if settings.noise_kind != NoiseKind::Off && noise_gain > 0.0 {
+        let (left_noise, right_noise) = if settings.noise_kind != NoiseKind::Off && noise_gain > 0.0
+        {
             (
                 self.left_noise.next(settings.noise_kind, frame_time),
                 self.right_noise.next(settings.noise_kind, frame_time),
@@ -275,18 +267,12 @@ impl NoiseState {
         let white = self.white();
         self.b0 = 0.99886 * self.b0 + white * 0.055_517_9;
         self.b1 = 0.99332 * self.b1 + white * 0.075_075_9;
-        self.b2 = 0.96900 * self.b2 + white * 0.153_852_0;
+        self.b2 = 0.96900 * self.b2 + white * 0.153_852;
         self.b3 = 0.86650 * self.b3 + white * 0.310_485_6;
         self.b4 = 0.55000 * self.b4 + white * 0.532_952_2;
         self.b5 = -0.7616 * self.b5 - white * 0.016_898_0;
-        let pink = self.b0
-            + self.b1
-            + self.b2
-            + self.b3
-            + self.b4
-            + self.b5
-            + self.b6
-            + white * 0.5362;
+        let pink =
+            self.b0 + self.b1 + self.b2 + self.b3 + self.b4 + self.b5 + self.b6 + white * 0.5362;
         self.b6 = white * 0.115_926;
         (pink * 0.11).clamp(-1.0, 1.0)
     }
