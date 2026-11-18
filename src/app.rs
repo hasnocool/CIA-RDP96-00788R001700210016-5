@@ -2,7 +2,11 @@
 
 use std::{
     path::PathBuf,
-    sync::mpsc::{self, Receiver},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+        mpsc::{self, Receiver},
+    },
     thread,
     time::Duration,
 };
@@ -13,6 +17,7 @@ use crate::{
     audio::AudioEngine,
     dsp::{AudioSettings, NoiseKind},
     export,
+    visualization,
 };
 
 pub struct GatewayApp {
@@ -22,6 +27,8 @@ pub struct GatewayApp {
     export_receiver: Option<Receiver<Result<PathBuf, String>>>,
     exporting: bool,
     export_status: String,
+    visualizer_enabled: bool,
+    visualizer_close_signal: Arc<AtomicBool>,
 }
 
 impl GatewayApp {
@@ -30,6 +37,8 @@ impl GatewayApp {
         match AudioEngine::new(settings) {
             Ok(audio) => Self {
                 settings,
+                visualizer_enabled: false,
+                visualizer_close_signal: Arc::new(AtomicBool::new(false)),
                 audio: Some(audio),
                 audio_error: None,
                 export_receiver: None,
@@ -38,6 +47,8 @@ impl GatewayApp {
             },
             Err(error) => Self {
                 settings,
+                visualizer_enabled: false,
+                visualizer_close_signal: Arc::new(AtomicBool::new(false)),
                 audio: None,
                 audio_error: Some(error.clone()),
                 export_receiver: None,
@@ -106,8 +117,13 @@ impl eframe::App for GatewayApp {
             };
         }
 
+        if self.visualizer_close_signal.swap(false, Ordering::AcqRel) {
+            self.visualizer_enabled = false;
+            context.request_repaint();
+        }
+
         let live_playing = self.audio.as_ref().is_some_and(AudioEngine::is_playing);
-        if live_playing || self.exporting {
+        if live_playing || self.exporting || self.visualizer_enabled {
             context.request_repaint_after(Duration::from_millis(150));
         }
     }
@@ -172,6 +188,32 @@ impl eframe::App for GatewayApp {
                     ui.label(format!("Remaining {}", Self::format_time((total - elapsed).max(0.0))));
                 });
                 ui.label(&self.export_status);
+            });
+
+            ui.add_space(8.0);
+            ui.group(|ui| {
+                ui.heading("Live visualization");
+                let previous = self.visualizer_enabled;
+                let response = ui.add_enabled(
+                    self.audio.is_some(),
+                    egui::Checkbox::new(
+                        &mut self.visualizer_enabled,
+                        "Open harmonic visualization in a separate window",
+                    ),
+                );
+                if response.changed() && self.visualizer_enabled {
+                    self.visualizer_close_signal.store(false, Ordering::Release);
+                } else if previous && !self.visualizer_enabled {
+                    ui.ctx().send_viewport_cmd_to(
+                        egui::ViewportId::from_hash_of("gateway_harmonic_visualizer"),
+                        egui::ViewportCommand::Close,
+                    );
+                }
+                if self.audio.is_some() {
+                    ui.label("Opens a live stereo phase figure, left/right waveforms, and measured FFT spectrum.");
+                } else {
+                    ui.label("Live visualization requires a working output audio device.");
+                }
             });
 
             ui.add_space(8.0);
@@ -295,6 +337,46 @@ impl eframe::App for GatewayApp {
 
         if let Some(audio) = &self.audio {
             audio.set_settings(self.settings);
+        }
+
+        if self.visualizer_enabled {
+            if let Some(audio) = &self.audio {
+                let tap = audio.visualization_tap();
+                let sample_rate = audio.sample_rate();
+                let elapsed_seconds = audio.elapsed_seconds();
+                let settings = self.settings.validated();
+                let close_signal = Arc::clone(&self.visualizer_close_signal);
+                let viewport_id =
+                    egui::ViewportId::from_hash_of("gateway_harmonic_visualizer");
+                let viewport_builder = egui::ViewportBuilder::default()
+                    .with_title("Gateway Harmonic Visualizer")
+                    .with_inner_size([1120.0, 850.0])
+                    .with_min_inner_size([780.0, 650.0]);
+
+                ui.ctx().show_viewport_deferred(
+                    viewport_id,
+                    viewport_builder,
+                    move |visualizer_ui, _viewport_class| {
+                        if visualizer_ui.input(|input| input.viewport().close_requested()) {
+                            close_signal.store(true, Ordering::Release);
+                            return;
+                        }
+
+                        visualizer_ui
+                            .ctx()
+                            .request_repaint_after(Duration::from_millis(66));
+
+                        let frames = tap.snapshot();
+                        visualization::show(
+                            visualizer_ui,
+                            &frames,
+                            sample_rate,
+                            settings,
+                            elapsed_seconds,
+                        );
+                    },
+                );
+            }
         }
     }
 }

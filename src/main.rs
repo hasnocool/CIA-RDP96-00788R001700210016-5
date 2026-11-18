@@ -4,6 +4,7 @@ mod app;
 mod audio;
 mod dsp;
 mod export;
+mod visualization;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {

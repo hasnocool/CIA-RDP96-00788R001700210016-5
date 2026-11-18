@@ -14,6 +14,7 @@ use cpal::{
 };
 
 use crate::dsp::{AudioSettings, NoiseKind, StereoSynth};
+use crate::visualization::AudioTap;
 
 struct SharedControl {
     playing: AtomicBool,
@@ -81,6 +82,7 @@ impl SharedControl {
 
 pub struct AudioEngine {
     control: Arc<SharedControl>,
+    visualization: Arc<AudioTap>,
     // Keeping the stream alive owns the device callback for the lifetime of the app.
     _stream: Stream,
     sample_rate: u32,
@@ -110,18 +112,19 @@ impl AudioEngine {
         }
 
         let control = Arc::new(SharedControl::new(settings));
+        let visualization = Arc::new(AudioTap::new());
         let stream = match sample_format {
-            SampleFormat::F32 => build_stream::<f32>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::F64 => build_stream::<f64>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::I8 => build_stream::<i8>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::I16 => build_stream::<i16>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::I24 => build_stream::<cpal::I24>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::I32 => build_stream::<i32>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::I64 => build_stream::<i64>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::U8 => build_stream::<u8>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::U16 => build_stream::<u16>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::U32 => build_stream::<u32>(&device, stream_config, Arc::clone(&control)),
-            SampleFormat::U64 => build_stream::<u64>(&device, stream_config, Arc::clone(&control)),
+            SampleFormat::F32 => build_stream::<f32>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::F64 => build_stream::<f64>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::I8 => build_stream::<i8>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::I16 => build_stream::<i16>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::I24 => build_stream::<cpal::I24>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::I32 => build_stream::<i32>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::I64 => build_stream::<i64>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::U8 => build_stream::<u8>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::U16 => build_stream::<u16>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::U32 => build_stream::<u32>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
+            SampleFormat::U64 => build_stream::<u64>(&device, stream_config, Arc::clone(&control), Arc::clone(&visualization)),
             other => return Err(format!("The output device uses unsupported sample format: {other:?}")),
         }
         .map_err(|error| format!("Could not create the audio stream: {error}"))?;
@@ -132,6 +135,7 @@ impl AudioEngine {
 
         Ok(Self {
             control,
+            visualization,
             _stream: stream,
             sample_rate,
             channels,
@@ -185,12 +189,17 @@ impl AudioEngine {
     pub fn device_name(&self) -> &str {
         &self.device_name
     }
+
+    pub fn visualization_tap(&self) -> Arc<AudioTap> {
+        Arc::clone(&self.visualization)
+    }
 }
 
 fn build_stream<T>(
     device: &Device,
     config: StreamConfig,
     control: Arc<SharedControl>,
+    visualization: Arc<AudioTap>,
 ) -> Result<Stream, cpal::Error>
 where
     T: SizedSample + FromSample<f32>,
@@ -200,6 +209,7 @@ where
     let mut synth = StereoSynth::new(sample_rate);
     let mut callback_generation = u64::MAX;
     let mut frame_index = 0_u64;
+    let mut visualization_cursor = 0_u64;
 
     device.build_output_stream(
         config,
@@ -208,6 +218,7 @@ where
             if generation != callback_generation {
                 synth.reset();
                 frame_index = 0;
+                visualization.begin_take(visualization_cursor);
                 callback_generation = generation;
             }
 
@@ -230,8 +241,13 @@ where
 
                 let (left, right) = synth.render_frame(&settings, frame_index);
                 if channels == 1 {
-                    frame[0] = T::from_sample((left + right) * 0.5);
+                    // Record the actual mono mix if the selected output is mono.
+                    let mono = (left + right) * 0.5;
+                    visualization.push_frame(&mut visualization_cursor, mono, mono);
+                    frame[0] = T::from_sample(mono);
                 } else {
+                    // The visualizer receives the same L/R samples written to the device.
+                    visualization.push_frame(&mut visualization_cursor, left, right);
                     frame[0] = T::from_sample(left);
                     frame[1] = T::from_sample(right);
                     for sample in frame.iter_mut().skip(2) {
@@ -246,6 +262,7 @@ where
             if control.generation.load(Ordering::Acquire) == generation {
                 control.published_frames.store(frame_index, Ordering::Release);
             }
+            visualization.publish(visualization_cursor);
         },
         |error| eprintln!("Audio stream error: {error}"),
         None,

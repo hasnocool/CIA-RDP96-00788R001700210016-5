@@ -27,7 +27,11 @@ Primary source: [CIA-RDP96-00788R001700210016-5.pdf](https://www.cia.gov/reading
 - Adjustable session duration, fade-in/fade-out, tone level, and noise level.
 - Pause, resume, stop/reset, session progress, and stage display.
 - Background WAV export as stereo 16-bit PCM. Rendering and the save dialog run outside the GUI/audio callback.
-- Unit tests for the signal relationship, tuning stage, timing, and output bounds.
+- Optional **Harmonic Visualization** native window, opened/closed with a checkbox in the main application.
+- Live stereo Lissajous/phase figure, left/right waveforms, and a measured two-channel FFT spectrum (0–1 kHz, dBFS).
+- The visualizer samples the signal actually sent to CPAL through a fixed-size atomic ring buffer; the audio callback does not lock, allocate, or wait for the visualizer.
+- Closing the visualization window with its title-bar close button synchronizes the checkbox in the main window.
+- Unit tests for the signal relationship, tuning stage, timing, output bounds, sample-tap snapshots, and FFT carrier-frequency detection.
 
 ## Important interpretation notes
 
@@ -70,6 +74,20 @@ sudo dnf install alsa-lib-devel pkgconf-pkg-config
 
 The native save dialog uses the XDG Desktop Portal when available (and can fall back to `zenity` on Linux).
 
+## Harmonic visualizer
+
+Enable **Open harmonic visualization in a separate window** in the main window. The visualization window can be moved, resized, or closed independently; closing it also turns the main-window toggle off.
+
+The window contains three views:
+
+- **Stereo phase / Lissajous:** plots left-channel samples on X against right-channel samples on Y. Different carrier frequencies create a slowly changing phase pattern; identical tuning tones appear as a diagonal trace.
+- **Left and right waveforms:** plots recent samples from each output channel.
+- **Frequency spectrum:** performs a Hann-windowed 16,384-point FFT on each channel and displays measured amplitude in dBFS from 0 to 1 kHz. Dashed markers show the current target carrier frequencies.
+
+The spectrum needs 16,384 output frames before it can be populated (about 0.34 seconds at 48 kHz). The phase and waveform views appear as soon as samples are available.
+
+**Important signal distinction:** the current synthesizer generates sine-wave carriers plus optional noise. A sine wave has a fundamental frequency but does not itself contain a rich harmonic series. The spectrum therefore shows the carrier peaks and any broadband noise that is actually present; it does not invent overtones. The 10 Hz binaural difference is a separation between the two ear channels, not an extra acoustic 10 Hz tone in either channel.
+
 ## Real-time and threading model
 
 - CPAL owns the high-priority output callback thread.
@@ -84,11 +102,12 @@ Cargo.toml
 README.md
 rust-toolchain.toml
 src/
-  main.rs      # native window entry point
-  app.rs       # eframe GUI and worker coordination
-  audio.rs     # CPAL output stream and atomic controls
-  dsp.rs       # stereo tone/noise synthesis and tests
-  export.rs    # background WAV rendering function
+  main.rs          # native window entry point
+  app.rs           # eframe GUI, export worker, and visualizer viewport
+  audio.rs         # CPAL output stream, atomic controls, and sample tap
+  dsp.rs           # stereo tone/noise synthesis and tests
+  visualization.rs # lock-free tap, FFT analysis, and visualizer drawing
+  export.rs        # background WAV rendering function
 ```
 
 ## License
