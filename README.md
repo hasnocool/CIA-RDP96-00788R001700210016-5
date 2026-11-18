@@ -128,7 +128,7 @@ The 0.5–30 Hz sweep currently varies a mathematical beat-coupled overlay. It d
 - The GUI communicates live settings to that callback using atomic values; the callback does not acquire a mutex, allocate, or wait on a channel.
 - Audio generation is performed directly into the device-provided output buffer.
 - WAV rendering, save dialogs, and research-bundle writing run on background threads.
-- Frequency-sweep points are distributed across a bounded worker pool (maximum eight). Workers send completed points and a completion event through a channel; the GUI only polls with try_recv() and never waits for results.
+- Frequency-sweep points are distributed across a bounded worker pool (maximum eight). Workers send completed points and a completion event through a channel; the GUI polls with try_recv(), limits result ingestion to 32 points per frame, and never waits for results. Dropping or cancelling a sweep handle requests cooperative worker shutdown.
 - WGPU performs per-vertex surface calculations on the GPU. It does not build a new CPU-side mesh on each frame.
 - The app stores experiment parameters separately from live playback controls so changing the audio session does not silently mutate an experiment configuration.
 
