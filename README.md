@@ -2,7 +2,7 @@
 
 A native Rust desktop application that generates configurable stereo binaural tones and procedural noise inspired by the audio sequence described in the 9 June 1983 *Analysis and Assessment of Gateway Process* report (CIA document CIA-RDP96-00788R001700210016-5).
 
-This is a research-oriented audio generator, not an official Monroe Institute product and not a recreation of the original Gateway tapes.
+This is a research-oriented audio generator, not an official Monroe Institute product and not a recreation of the original Gateway tapes. The native desktop window uses eframe/egui with its winit backend.
 
 ## What the report actually specifies
 
@@ -39,25 +39,25 @@ Primary source: [CIA-RDP96-00788R001700210016-5.pdf](https://www.cia.gov/reading
 
 ## Build and run
 
-Requires Rust **1.95 or newer** (the current eframe 0.37 release MSRV) and a working desktop audio output device.
+Requires Rust **1.95 or newer** (the eframe 0.37 release MSRV) and a working desktop audio output device.
 
-\`\`\`bash
+```bash
 cargo run --release
-\`\`\`
+```
 
 Run unit tests and formatting checks:
 
-\`\`\`bash
+```bash
 cargo test
 cargo fmt --check
 cargo clippy --all-targets --all-features -- -D warnings
-\`\`\`
+```
 
 ### Linux dependencies
 
 CPAL uses the Linux ALSA development headers at build time. Install the equivalent packages for your distribution.
 
-\`\`\`bash
+```bash
 # Arch Linux / CachyOS
 sudo pacman -S --needed alsa-lib pkgconf
 
@@ -66,9 +66,9 @@ sudo apt install libasound2-dev pkg-config libxcb-render0-dev libxcb-shape0-dev 
 
 # Fedora
 sudo dnf install alsa-lib-devel pkgconf-pkg-config
-\`\`\`
+```
 
-The native save dialog uses the XDG Desktop Portal when available (and can fall back to \`zenity\` on Linux).
+The native save dialog uses the XDG Desktop Portal when available (and can fall back to `zenity` on Linux).
 
 ## Real-time and threading model
 
@@ -79,7 +79,7 @@ The native save dialog uses the XDG Desktop Portal when available (and can fall 
 
 ## Project layout
 
-\`\`\`text
+```text
 Cargo.toml
 README.md
 rust-toolchain.toml
@@ -89,7 +89,7 @@ src/
   audio.rs     # CPAL output stream and atomic controls
   dsp.rs       # stereo tone/noise synthesis and tests
   export.rs    # background WAV rendering function
-\`\`\`
+```
 
 ## License
 
