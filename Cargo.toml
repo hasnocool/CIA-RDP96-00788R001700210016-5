@@ -1,0 +1,17 @@
+[package]
+name = "gateway-audio-lab"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+description = "A research-oriented stereo binaural audio generator inspired by the 1983 Gateway Process report"
+license = "MIT"
+repository = "https://github.com/hasnocool/CIA-RDP96-00788R001700210016-5"
+
+[dependencies]
+cpal = "0.18.2"
+eframe = "0.37.0"
+hound = "3.5.1"
+rfd = "0.18.0"
+
+[lints.rust]
+unsafe_code = "forbid"
