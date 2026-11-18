@@ -14,8 +14,6 @@ use eframe::{
 const GRID_SIZE: u32 = 40;
 const VERTEX_COUNT: u32 = 4 * GRID_SIZE * (GRID_SIZE - 1);
 
-#[repr(C)]
-#[repr(C)]
 #[derive(Clone, Copy)]
 struct HarmonicUniforms {
     params: [f32; 4],

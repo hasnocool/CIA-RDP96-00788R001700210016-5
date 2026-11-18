@@ -600,7 +600,7 @@ fn build_animation_html(points: &[SweepPoint]) -> String {
     frames.push(']');
 
     format!(
-        r#"<!doctype html>
+        r###"<!doctype html>
 <html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Gateway Audio Lab · Frequency sweep</title>
 <style>
@@ -622,13 +622,13 @@ ctx.fillStyle="#070c17";ctx.fillRect(0,0,canvas.width,canvas.height);
 for(let y=0;y<n;y++)for(let x=0;x<n;x++){{const v=frame.values[y*n+x],a=Math.min(1,Math.abs(v));
 if(a<.035)ctx.fillStyle="#eef5ff";else if(v>0)ctx.fillStyle="rgb("+Math.round(25+65*a)+","+Math.round(80+120*a)+","+Math.round(145+105*a)+")";else ctx.fillStyle="rgb("+Math.round(105+130*a)+","+Math.round(38+75*a)+","+Math.round(85+125*a)+")";
 ctx.fillRect(x*cell,y*cell,cell+.4,cell+.4);}}
-readout.textContent="Δf "+frame.beat.toFixed(2)+" Hz · "+frame.crossings+" nodal crossings · density "+frame.density.toFixed(4);
-seek.value=String(i);}
+readout.textContent="Δf "+frame.beat.toFixed(2)+" Hz \u{{b7}} "+frame.crossings+" nodal crossings \u{{b7}} density "+frame.density.toFixed(4);
+seek.value=String(i);}}
 function tick(t){{if(playing&&t-last>140){{index=(index+1)%frames.length;paint(index);last=t;}}requestAnimationFrame(tick);}}
 seek.addEventListener("input",()=>{{index=Number(seek.value);paint(index);}});
 toggle.addEventListener("click",()=>{{playing=!playing;toggle.textContent=playing?"Pause":"Play";}});
 paint(0);requestAnimationFrame(tick);
-</script></html>"#,
+</script></html>"###,
         points.len().saturating_sub(1),
         frames,
     )
